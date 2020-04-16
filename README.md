@@ -5,3 +5,9 @@ To download the complete SisFall dataset, please visit this link where it is pub
 
 N.B.: Ensure to run the file LoadData.py in the MLP folder before running any of the other python files.
 This specific file creates ADL and FALL folders to store the respective readings. 
+
+Abbreviations and their meanings
+MLP = Multilayer Perceptron
+RNN = Recurrent Neural Network
+BF = Before Filtering
+AF = After Filtering
