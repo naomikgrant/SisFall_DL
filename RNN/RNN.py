@@ -12,8 +12,8 @@ from sklearn.metrics import confusion_matrix
 
 
 # Loading data to go through neural networks
-X1 = pickle.load(open("Samples_RNN.pickle", "rb"))
-Y1 = pickle.load(open("Labels_RNN.pickle", "rb"))
+X1 = pickle.load(open("SamplesBF_RNN.pickle", "rb"))
+Y1 = pickle.load(open("LabelsBF_RNN.pickle", "rb"))
 X2 = pickle.load(open("SamplesAF_RNN.pickle", "rb"))
 Y2 = pickle.load(open("LabelsAF_RNN.pickle", "rb"))
 
