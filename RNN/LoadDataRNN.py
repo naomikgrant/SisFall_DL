@@ -183,12 +183,12 @@ scaled_train_samplesAF_RNN = scaled_train_samplesAF_RNN.reshape(sample_num, time
 
 # Saving data
 print("Saving data samples before filtering...")
-pickle_out = open("Samples_RNN.pickle", "wb")
+pickle_out = open("SamplesBF_RNN.pickle", "wb")
 pickle_out.truncate(0)
 pickle.dump(scaled_train_samplesBF_RNN, pickle_out)
 pickle_out.close()
 
-pickle_out = open("Labels_RNN.pickle", "wb")
+pickle_out = open("LabelsBF_RNN.pickle", "wb")
 pickle_out.truncate(0)
 pickle.dump(train_labelsBF_RNN, pickle_out)
 pickle_out.close()

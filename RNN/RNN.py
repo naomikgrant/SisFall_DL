@@ -77,11 +77,11 @@ modelAF_RNN.compile(optimizer=tf.keras.optimizers.Adam(0.0005), loss='binary_cro
 
 # Training model
 print("Training model w/ data after filtering...")
-historyAF_RNN = modelAF_RNN.fit(X2_train, Y2_train, validation_data=(X2_test, Y2_test), batch_size=64, epochs=20, shuffle = False)
+historyAF_RNN = modelAF_RNN.fit(X2_train, Y2_train, validation_data=(X2_test, Y2_test), batch_size=64, epochs=15, shuffle = False)
 modelAF_RNN.summary()     # Displays parameters within model
 
 print("Training model w/ data before filtering...")
-historyBF_RNN = modelBF_RNN.fit(X1_train, Y1_train, validation_data=(X1_test, Y1_test), batch_size=64, epochs=20, shuffle = False)
+historyBF_RNN = modelBF_RNN.fit(X1_train, Y1_train, validation_data=(X1_test, Y1_test), batch_size=64, epochs=15, shuffle = False)
 modelBF_RNN.summary()     # Displays parameters within model
 
 # Prediction Stage
