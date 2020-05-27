@@ -4,25 +4,31 @@ the pre-processing stage of labelling falls from ADL's into respective pickle fi
 Note to self: Include creation & copy of ADL folders in this .py file at the end.
 '''
 
+import tensorflow as tf
 import csv
-import glob, os          # Iterates through directories and joins paths
-import cv2               # Carries out image & cv operations
-import shutil
+import os                # Iterates through directories and joins paths
 import numpy as np       # Carried out array operations
 import math
-from scipy.signal import butter,filtfilt
+from scipy import signal
 from sklearn.preprocessing import MinMaxScaler
 import pickle
 
 # Paths for results from dataset
+main_path = "./SisFall_new"
+dataset_path = "./SisFall_dataset"
+ADL_path = "./SisFall_new/ADL"
+FALL_path = "./SisFall_new/FALL"
+
+'''
 main_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new"
 dataset_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/SisFall_dataset"
 ADL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/ADL"
 FALL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/FALL"
+'''
 
 # Variable and array declarations for applying RNN
-sample_num = 4500                  # Setting number of desired samples
-time_steps = 200                   # Setting number of desired time steps
+#sample_num = 4500                  # Setting number of desired samples
+time_steps = 1500                  # Setting number of desired time steps
 feat_num = 1                       # Setting number of desired features
 AAcc_RNNx, AAcc_RNNz = [], []      # Array for ADL RNN samples
 FAcc_RNNx, FAcc_RNNz = [], []      # Array for FALL RNN samples
@@ -36,7 +42,7 @@ train_samplesAF_RNN = []           # Array for all final RNN samples after filte
 train_labelsAF_RNN = []            # Array for all labels of samples after filtering
 partA1, partA2 = [], []
 partB1, partB2 = [], []
-
+partC1, partC2 = [], []
 
 # Dividing data into time slices
 for ADLfile in os.scandir(ADL_path):
@@ -111,15 +117,15 @@ FvectorsumBF_RNN = vectorsum(FAcc_RNNx, FAcc_RNNz, FvectorsumBF_RNN)
 print("Filtering w/ 4th order Butterworth filter w/ fc = 5Hz...")
 fs = 200            # Sampling frequency in Hz
 order = 4           # Order signal
-fc = 5              # Cut-off frequency of the filter in Hz
+cutOff = 5          # cut-off frequency of the filter in Hz
 nyquist = 0.5*fs    # Nyquist frequency
+fc = cutOff/nyquist # Normalized cut-off frequency of the filter
 t = 370800          # Elderly = 1.5h*15*3600, Youth = 3.5h*23*3600 so total time = 370,800
 
-def filter(data, cutoff, fs, order):
-    normal_cutoff = fc / nyquist
+def filter(data, fc, order):
     # Get the filter coefficients
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    y = filtfilt(b, a, data)
+    sos = signal.butter(order, fc, output='sos')
+    y = signal.sosfiltfilt(sos, data)
     return y
 
 # Array -> Signal conversion
@@ -131,55 +137,70 @@ sigFAcc_RNNz = [i*np.sin(2*np.pi*fs*t) for i in FAcc_RNNz]
 
 # Filter application
 print("Applying filter...")
-AAcc_RNNx = filter(sigAAcc_RNNx, fc, fs, order)
-AAcc_RNNz = filter(sigAAcc_RNNz, fc, fs, order)
-FAcc_RNNx = filter(sigFAcc_RNNx, fc, fs, order)
-FAcc_RNNz = filter(sigFAcc_RNNz, fc, fs, order)
+AAcc_RNNx = filter(sigAAcc_RNNx, fc, order)
+AAcc_RNNz = filter(sigAAcc_RNNz, fc, order)
+FAcc_RNNx = filter(sigFAcc_RNNx, fc, order)
+FAcc_RNNz = filter(sigFAcc_RNNz, fc, order)
 ##################### END FILTERING #####################
 
 # Calculating horizontal plane vectorsum feature AFTER filtering
 AvectorsumAF_RNN = vectorsum(AAcc_RNNx, AAcc_RNNz, AvectorsumAF_RNN)
 FvectorsumAF_RNN = vectorsum(FAcc_RNNx, FAcc_RNNz, FvectorsumAF_RNN)
 
+# Preparing labels
+for i in AvectorsumBF_RNN :
+    print("Appending ADL RNN label for before filtering...")
+    partC1.append(0)
+for i in FvectorsumBF_RNN :
+    print("Appending FALL RNN label for before filtering...")
+    partC1.append(1)
+for i in AvectorsumAF_RNN :
+    print("Appending ADL RNN label for after filtering...")
+    partC2.append(0)
+for i in FvectorsumAF_RNN :
+    print("Appending FALL RNN label for after filtering...")
+    partC2.append(1)
+
+# Hot encoding
+print("Hot encoding labels...")
+partC1=tf.keras.utils.to_categorical(partC1)
+partC2=tf.keras.utils.to_categorical(partC2)
+
+print("Placing data into numpy arrays...")
 # Dividing list with imported readings into specified timesteps
 # in order to create final input datasets for RNN model
 partA1 = list(div_timesteps(AvectorsumBF_RNN, time_steps))
 partA2 = list(div_timesteps(AvectorsumAF_RNN, time_steps))
-for i in partA1:
-    print("Appending ADL RNN label in array...")
-    train_labelsBF_RNN.append(0)
-for i in partA2:
-    print("Appending ADL RNN label in array...")
-    train_labelsAF_RNN.append(0)
-
 partB1 = list(div_timesteps(FvectorsumBF_RNN, time_steps))
 partB2 = list(div_timesteps(FvectorsumAF_RNN, time_steps))
-for i in partB1:
-    print("Appending FALL RNN label in array...")
-    train_labelsBF_RNN.append(1)
-for i in partB2:
-    print("Appending FALL RNN label in array...")
-    train_labelsAF_RNN.append(1)
+train_labelsBF_RNN = list(div_timesteps(partC1, time_steps))
+train_labelsAF_RNN = list(div_timesteps(partC2, time_steps))
 
 train_samplesBF_RNN = partA1.copy()
 train_samplesAF_RNN = partA2.copy()
 train_samplesBF_RNN.extend(partB1)
 train_samplesAF_RNN.extend(partB2)
 
-# Placing training samples and labels into numpy arays
+# Placing training samples and labels into numpy arrays
 train_samplesBF_RNN = np.array(train_samplesBF_RNN)
 train_labelsBF_RNN = np.array(train_labelsBF_RNN)
 train_samplesAF_RNN = np.array(train_samplesAF_RNN)
 train_labelsAF_RNN = np.array(train_labelsAF_RNN)
 
-# Scaling & reshaping data from 2D -> 3D
+'''
+train_labelsBF_RNN=tf.keras.utils.to_categorical(train_labelsBF_RNN)
+train_labelsAF_RNN=tf.keras.utils.to_categorical(train_labelsAF_RNN)
+'''
+
+# Scaling & reshaping data
+print('Sample No.:', train_samplesBF_RNN.shape[0], 'Timesteps:', train_samplesBF_RNN.shape[1], 'Feature No.:', feat_num)
 print("Scaling data samples...")
 scaler = MinMaxScaler(feature_range=(0, 1))
+# Samples
 scaled_train_samplesBF_RNN = scaler.fit_transform((train_samplesBF_RNN).reshape(-1, 1))
-#scaled_train_samplesBF_RNN = scaled_train_samplesBF_RNN.reshape(sample_num, time_steps, feat_num)
-scaled_train_samplesBF_RNN = scaled_train_samplesBF_RNN.reshape(sample_num, time_steps)
+scaled_train_samplesBF_RNN = scaled_train_samplesBF_RNN.reshape(train_samplesBF_RNN.shape[0], train_samplesBF_RNN.shape[1], feat_num)
 scaled_train_samplesAF_RNN = scaler.fit_transform((train_samplesAF_RNN).reshape(-1, 1))
-scaled_train_samplesAF_RNN = scaled_train_samplesAF_RNN.reshape(sample_num, time_steps)
+scaled_train_samplesAF_RNN = scaled_train_samplesAF_RNN.reshape(train_samplesAF_RNN.shape[0], train_samplesAF_RNN.shape[1], feat_num)
 
 # Saving data
 print("Saving data samples before filtering...")
