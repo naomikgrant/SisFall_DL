@@ -3,10 +3,9 @@ This Python file loads a specific number of randomly selected data
 from the SisFall database and then carries out the pre-processing stage
 of labelling falls from ADL's into respective pickle files.
 '''
-
+import tensorflow as tf
 import csv
-import glob, os          # Iterates through directories and joins paths
-import cv2               # Carries out image & cv operations
+import os                # Iterates through directories and joins paths
 import shutil
 import numpy as np       # Carried out array operations
 import math
@@ -16,9 +15,19 @@ import random
 import pickle
 
 # Path for results from dataset
+main_path = "./SisFall_new"
+dataset_path = "./SisFall_dataset"
+ADL_path = "./SisFall_new/ADL"
+FALL_path = "./SisFall_new/FALL"
+
+feat_num = 1                       # Setting number of desired features
+'''
 main_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new"
 dataset_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/SisFall_dataset"
-
+ADL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/ADL"
+FALL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/FALL"
+'''
+'''
 # Creating folder to place all ADL text files
 os.scandir(main_path)
 ADLfolder = os.path.join(main_path, 'ADL')
@@ -30,19 +39,18 @@ os.scandir(main_path)
 FALLfolder = os.path.join(main_path, 'FALL')
 if not os.path.exists(FALLfolder):
     os.makedirs(FALLfolder)
+'''
 
 # Sorting ADL files and FALL files in respective folders
-ADL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/ADL"
-FALL_path = "/PyCharm 2019.2.3/PycharmProjects/SisFall_new/FALL"
 for root, dirs, files in os.walk(os.path.normpath((dataset_path)), topdown=False):
     for name in files:
         src = os.path.join(root, name)
         if name.endswith(".txt") and name.startswith("D"):
-            if not os.path.exists(ADL_path):                # Add this line AFTER files are copied to folder
+           #if not os.path.exists(ADL_path):                # Add this line AFTER files are copied to folder
                 print("ADL files:" + name)
                 shutil.copy(src, ADL_path)
         if name.endswith(".txt") and name.startswith("F"):
-             if not os.path.exists(FALL_path):               # Add this line AFTER files are copied to folder
+            #if not os.path.exists(FALL_path):               # Add this line AFTER files are copied to folder
                 print("FALL files:" + name)
                 shutil.copy(src, FALL_path)
 
@@ -87,19 +95,21 @@ for FALLfile in os.scandir(FALL_path):
             print("Importing FALL accelerometer readings...")
             FAcc_x.append(int(i[0]))
             FAcc_z.append(int(i[2]))
-'''
+
 # Converting data in bits to g
+# For accelerometer ADXL345, Acceleration [g]: [(2*Range)/(2^Resolution)]*AD
+# where AD = acceleration data, Range = 16g, Resolution = 2^13 = 8192
 def conversion (Acc_x, Acc_z):
     x = []
     z = []
     print("Converting data in bits to g...")
-    x = [i*32.0 / 8192.0 for i in Acc_x]
-    z = [i*32.0 / 8192.0 for i in Acc_z]
+    x = [(32.0 / 8192.0)*i for i in Acc_x]
+    z = [(32.0 / 8192.0)*i for i in Acc_z]
     return x, z
 
 AAcc_x, AAcc_z = conversion(AAcc_x, AAcc_z)
 FAcc_x, FAcc_z = conversion(FAcc_x, FAcc_z)
-'''
+
 # Preparing the horizontal plane vectorsum feature before filtering
 def vectorsum (Acc_x, Acc_z, vectorsum):
     x = []
@@ -111,7 +121,6 @@ def vectorsum (Acc_x, Acc_z, vectorsum):
     vectorsum = [math.sqrt(i) for i in sum]
     return vectorsum
 
-print("BEFORE FILTERING...")
 AvectorsumBF = vectorsum(AAcc_x, AAcc_z, AvectorsumBF)
 for i in range(1000):
     AsampleBF = random.choice(AvectorsumBF)
@@ -129,29 +138,44 @@ for i in range(1000):
     train_labelsBF.append(1)
 
 # Placing arrays into numpy arrays due to expection from Keras
-print("Placing into numpy arrays...")
+print("Placing into numpy arrays prior to filtering...")
 train_labelsBF = np.array(train_labelsBF)
 train_samplesBF = np.array(train_samplesBF)
 
-print("DURING FILTERING...")
-print("Placing accelerometer lists into numpy arrays...")
-AAcc_x = np.array(AAcc_x)
-AAcc_z = np.array(AAcc_z)
+print('No. of randomly selected accelerometer readings BEFORE filtering:', train_samplesBF.shape[0])
 
-'''
+##################### START FILTERING #####################
 # Filter creation and application
-print("Creating 4th order Butterworth filter with cut-off frequency = 5Hz...")
-fs = 200            # Sampling frequency
-N = 4               # Filter order
-fc = 5              # Cut-off frequency of the filter
-w = fc / (fs / 2)   # Normalize the frequency
-b, a = signal.butter(N, w, 'low')
+print("Filtering w/ 4th order Butterworth filter w/ fc = 5Hz...")
+fs = 200            # Sampling frequency in Hz
+order = 4           # Order signal
+cutOff = 5          # cut-off frequency of the filter in Hz
+nyquist = 0.5*fs    # Nyquist frequency
+fc = cutOff/nyquist # Normalized cut-off frequency of the filter
+t = 370800          # Elderly = 1.5h*15*3600, Youth = 3.5h*23*3600 so total time = 370,800
 
-AAcc_x = signal.filtfilt(b, a, AAcc_x)
-AAcc_z = signal.filtfilt(b, a, AAcc_z)
+def filter(data, fc, order):
+    # Get the filter coefficients
+    sos = signal.butter(order, fc, output='sos')
+    y = signal.sosfiltfilt(sos, data)
+    return y
+
+# Array -> Signal conversion
+print("Converting array w/ data into sine wave...")
+sigAAcc_x = [i*np.sin(2*np.pi*fs*t) for i in AAcc_x]
+sigAAcc_z = [i*np.sin(2*np.pi*fs*t) for i in AAcc_z]
+sigFAcc_x = [i*np.sin(2*np.pi*fs*t) for i in FAcc_x]
+sigFAcc_z = [i*np.sin(2*np.pi*fs*t) for i in FAcc_z]
+
+# Filter application
+print("Applying filter...")
+AAcc_x = filter(sigAAcc_x, fc, order)
+AAcc_z = filter(sigAAcc_z, fc, order)
+FAcc_x = filter(sigFAcc_x, fc, order)
+FAcc_z = filter(sigFAcc_z, fc, order)
+##################### END FILTERING #####################
 
 # Preparing the horizontal plane vectorsum feature after filtering
-print("AFTER FILTERING...")
 AvectorsumAF = vectorsum(AAcc_x, AAcc_z, AvectorsumAF)
 for i in range(1000):
     AsampleAF = random.choice(AvectorsumAF)
@@ -168,11 +192,24 @@ for i in range(1000):
     print("Appending FALL label in array...")
     train_labelsAF.append(1)
 
+# Placing arrays into numpy arrays due to expection from Keras
+print("Placing into numpy arrays after filtering...")
+train_labelsAF = np.array(train_labelsAF)
+train_samplesAF = np.array(train_samplesAF)
+
+print('No. of randomly selected accelerometer readings AFTER filtering:', train_samplesAF.shape[0])
+
+# Hot encoding
+print("Hot encoding labels...")
+train_labelsBF=tf.keras.utils.to_categorical(train_labelsBF)
+train_labelsAF=tf.keras.utils.to_categorical(train_labelsAF)
+
 # Scaling data
 print("Scaling data samples...")
 scaler = MinMaxScaler(feature_range=(0, 1))
 scaled_train_samplesBF = scaler.fit_transform((train_samplesBF).reshape(-1, 1))
 scaled_train_samplesAF = scaler.fit_transform((train_samplesAF).reshape(-1, 1))
+
 
 # Saving data
 print("Saving data samples before filtering...")
@@ -199,4 +236,3 @@ pickle_out.close()
 
 #pickle_in = open("SamplesBF.pickle", "rb")
 #scaled_train_samplesBF = pickle.load(pickle_in)
-'''
