@@ -11,3 +11,6 @@ MLP = Multilayer Perceptron
 RNN = Recurrent Neural Network
 BF = Before Filtering
 AF = After Filtering
+
+The Testing.py file serves to observe the shape, size and content of the labels and samples 
+produced after running LoadData.py & LoadDataRNN.py
